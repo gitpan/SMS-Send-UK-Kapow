@@ -10,13 +10,13 @@ SMS::Send::UK::Kapow - SMS::Send driver for the Kapow.co.uk website
 
 =head1 VERSION
 
-This document describes SMS::Send::UK::Kapow Version 0.01
+his document describes SMS::Send::UK::Kapow Version 0.02
 
 =cut
 
 use base 'SMS::Send::Driver';
 use version;
-our $VERSION = qv('0.01');
+our $VERSION = qv('0.02');
 use URI::Escape;
 
 =head1 SYNOPSIS
@@ -27,8 +27,10 @@ use URI::Escape;
                _login    => 'my-kapow-username',   # normally required, see below (synonymous with _user) 
                _password => 'my-kapow-password',   # normally required, see below
                _send_via => 'http',                # optional, can be http, https or email, default is http
-               _http_method => 'post',             # optional, the http method to use for http & https. get or post, default get
-               _email_via => 'sendmail',           # optional, for use when 'email' is used. can be 'sendmail' or 'smtp'
+               _http_method => 'post',             # optional, the http method to use for http & https. 
+                                                   #                           get or post, default get.
+               _email_via => 'sendmail',           # optional, for use when 'email' is used. can be 
+                                                   #                            'sendmail' or 'smtp'
                _url      => 'http://foo.com/done'  # optional url to call after sending, for http and https
                _from     => 'me@mydomain.com',     # optional, for use when 'email' is used in send_via 
                _from_id  => 'my-kapow-id',         # optional message originator, if enabled for your account
@@ -38,7 +40,8 @@ use URI::Escape;
     my $sent = $sender->send_sms(
         to        => '447712345678',                 # the recipient phone number
         text      => "Hello, world!",                # the text of the message to send
-        _url      => 'http://foo.com/done123',       # optional url per message to call after sending (for http and https)
+        _url      => 'http://foo.com/done123',       # optional url per message to call after sending 
+                                                     #                                 (for http and https)
         _from     => 'me@mydomain.com',              # optional from address per message (for email)
     );
 
@@ -52,7 +55,7 @@ use URI::Escape;
     # What's the status of the last message we sent? (available for http & https methods)
     my $status = $sender->send_status;
 
-    # What's the status for an arbitrary message we sent in the past? (pass it the return value of the send_sms method)
+    # What's the status for an arbitrary message we sent in the past?
     my $status = $sender->send_status($sent);
 
 =head1 DESCRIPTION
@@ -79,7 +82,7 @@ Kapow account and used through this module.
 =head2 new
 
   # Create a new sender using this driver
-  my $sender = SMS::Send->new('Kapow',
+  my $sender = SMS::Send->new('UK::Kapow',
     _login    => 'username',     # normally required but see below
     _password => 'password',     # normally required but see below
     );
@@ -114,8 +117,10 @@ The preferred methods are 'http' or 'https' because they allow the
 system to track the delivery statuses of individual messages. If your
 server cannot issue http/s requests then you can set this to 'email'
 and it will instead send an email message to Kapow to issue the SMS
-message. Note that using email means you lose some the tracking
+message. Note that using email means you lose the delivery tracking
 features of the http/s methods.
+
+To use the email method you need the MIME::Lite module installed.
 
 =item _http_method
 
@@ -127,12 +132,10 @@ changed to 'post' if desired.
 =item _email_via
 
 The C<_email_via> param is relevant when using email to send the
-messages. If you have the MIME::Lite module installed then you can
-control how the email messages are generated. Valid values for this
-param are 'sendmail' and 'smtp'. The default is 'sendmail' except on
-Windows, where the default is 'smtp'. Note that you can only control
-this if MIME::Lite is available on your system; otherwise the module
-will attempt to send the message directly using sendmail.
+messages. With the MIME::Lite module installed you can control how
+email messages are generated. Valid values for this param are 
+'sendmail' and 'smtp'. The default is 'sendmail' except on Windows, 
+where the default is 'smtp'.
 
 =item _url
 
@@ -194,9 +197,9 @@ sub new
 	    Carp::croak "You must install the LWP::UserAgent module to send SMS messages by http or https";
 	}
     }
-    elsif ($opts{_email_via} and ! $opts{ml})
+    elsif (! $opts{ml})
     {
-	Carp::croak "You must install the MIME::Lite module before you can set the '_email_via' parameter";
+	Carp::croak "You must install the MIME::Lite module before you can issue SMS messages by email";
     }
     
     return bless \%opts, ref($class) || $class;
@@ -227,9 +230,9 @@ relevant to users in the UK.
 The required C<_text> param should contain the text content that you
 wish to send. Normally this is limited to 160 characters though that
 restriction is NOT enforced by this module in order to take advantage
-of the multiple-part messages ability available on some phones.
+of multiple-part messages ability available on some phones.
 
-Any newlines or carriage returns present are silently removed.
+Any newlines or carriage returns present are converted to spaces.
 
 =item _url
 
@@ -331,73 +334,40 @@ sub send_sms
     }
     elsif ($self->{_send_via} eq 'email')
     {
-	if ($self->{ml}) # mime::lite available, we'll use that
+	if (! $self->{ml}) # no mime::lite
 	{
-	    my $send_method = $self->{_email_via} || ($IS_WINDOWS ? 'smtp' : 'sendmail');
-
-	    my $sms         = $opts{text} || "";
-	    my $mobile      = $opts{to}   || "";
-
-	    my %options     = (To        => "$opts{to}\@kapow.co.uk",
-			       Subject   => $sms,
-			       Data      => "", );
-
-	    if (my $username = $self->{_login} || $self->{_user}
-		and 
-		my $password = $self->{_password})
-	    {
-		$options{Data} = "$username\n$password\n";
-	    }
-	    if (my $from = $opts{_from} || $self->{_from})
-	    {
-		$options{From} = $from;
-	    }
-
-	    eval
-	    {
-		MIME::Lite->new(%options)->send($send_method);
-	    };
-	    if ($@)
-	    {
-		Carp::carp $@;
-		return;
-	    }
-	    else { $self->{_sent_at} = time(); return 1 } # send and forget
+	    Carp::croak "Cannot send SMS messages by email without MIME::Lite installed";
 	}
-	else # no mime::lite, just spawn to sendmail
+	my $send_method = $self->{_email_via} || ($IS_WINDOWS ? 'smtp' : 'sendmail');
+
+	my $sms         = $opts{text} || "";
+	my $mobile      = $opts{to}   || "";
+
+	my %options     = (To        => "$opts{to}\@kapow.co.uk",
+			   Subject   => $sms,   Type => 'TEXT',
+			   Data      => "", );
+
+	if (my $username = $self->{_login} || $self->{_user}
+	    and 
+	    my $password = $self->{_password})
 	{
-	    my $message = join "\n",
-	    "To: $opts{to}\@kapow.co.uk",
-	    "Subject: $opts{text}";
-
-	    if (my $from = $opts{_from} || $self->{_from})
-	    {
-		$message .= "\nFrom: $from";
-	    }
-	    my $message_body = "\n";
-
-	    if (my $username = $self->{_login} || $self->{_user}
-		and 
-		my $password = $self->{_password})
-	    {
-		$message_body = "$username\n$password\n";
-	    }
-
-	    my $email_message = "$message\n\n$message_body";
-
-	    eval
-	    {
-		open my $out, " | sendmail -t -oi" or Carp::croak "Can't spawn sendmail ($!)";
-		print $out $email_message;
-		close $out;
-	    };
-	    if ($@)
-	    {
-		Carp::carp $@;
-		return;
-	    }
-	    else { $self->{_sent_at} = time(); return 1 } # send and forget
+	    $options{Data} = "$username\n$password\n";
 	}
+	if (my $from = $opts{_from} || $self->{_from})
+	{
+	    $options{From} = $from;
+	}
+
+	eval
+	{
+	    MIME::Lite->new(%options)->send($send_method);
+	};
+	if ($@)
+	{
+	    Carp::carp $@;
+	    return;
+	}
+	else { $self->{_sent_at} = time(); return 1 } # send and forget
     }
     return;
 }
