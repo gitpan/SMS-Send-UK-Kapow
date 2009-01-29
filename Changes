@@ -1,5 +1,18 @@
 Revision history for SMS-Send-UK-Kapow
 
+0.05    29 January 2009 
+        Default HTTP method changed from get to post.
+        Changes to number processing to avoid duplication of work already done by Send::SMS.
+
+0.04    29 January 2009 (not released)
+        Renamed send_status method to delivery_status, with an alias for compatibility.
+        The _from_id and _route params can now be set per message as well as per object.
+        Don't translate '07' to '447' anymore before sending, as it's not required by Kapow.
+        Added META.yml file.
+
+0.03    28 January 2009 (not released)
+        Both MIME::Lite and LWP::UserAgent are now required.
+
 0.02    25 January 2009
         Doc fix and require MIME::Lite for email.
 
