@@ -10,9 +10,10 @@ SMS::Send::UK::Kapow - SMS::Send driver for the Kapow.co.uk website
 
 =cut
 
+use SMS::Send::Driver            ();
 use base 'SMS::Send::Driver';
 use version;
-our $VERSION = qv('0.05');
+our $VERSION = qv('0.06');
 use URI::Escape;
 
 =head1 SYNOPSIS
@@ -31,6 +32,8 @@ use URI::Escape;
                _from     => 'me@mydomain.com',     # optional, for use when 'email' is used in send_via 
                _from_id  => 'my-kapow-id',         # optional message originator, if enabled for your account
                _route    => '840101',              # optional shortcode for premium sms reverse billing
+               _wait     => 0,                     # optional, supply a defined but false value to stop the
+                                                   #     module from trying to confirm delivery. default true.
            );
 
     my $sent = $sender->send_sms(
@@ -41,6 +44,7 @@ use URI::Escape;
         _from     => 'me@mydomain.com',              # optional from address per message (for email)
         _from_id  => 'my-kapow-id',                  # optional message originator per message
         _route    => '840101',                       # optional shortcode per message for reverse billing
+        _wait     => 0,                              # optional per message control of delivery checks.
     );
 
     # Did it send to Kapow ok?
@@ -160,6 +164,21 @@ SMS service to reverse-bill recipients for sending an SMS message. If
 you have purchased this feature from Kapow for your account then you
 can control it using this parameter.
 
+=item _wait
+
+The C<_wait> param is relevant when using http or https to send your
+messages. The SMS::Send specification dictates that if a message can
+have its delivery checked & confirmed then the driver module should do
+that automatically at the time the message is sent. This means that if
+you use http/s to send your messages then the system will wait for up
+to 10 seconds trying to validate that the message has gone. If you want
+to override this behaviour then supply a defined-but-false value for
+this param, such as 0 or the empty string.
+
+Note that if you do suppress the automatic checking as described above
+then you can still check the state of delivery of each message using 
+the delivery_status() method.
+
 =back
 
 Returns a new C<SMS::Send::UK::Kapow> object, or dies on error.
@@ -175,6 +194,7 @@ sub new
 {
     my $class    = shift;
     my %opts     = (_send_via => 'http', _http_method => 'post',
+		    _wait     => 1,
 		    @_);
 
     $opts{ua} = LWP::UserAgent->new;
@@ -228,6 +248,12 @@ description.
 The C<_route> param is optional and can be used to provide a reverse
 billing shortcode specific to this message. See above for a complete
 description.
+
+=item _wait
+
+The C<_wait> param is optional and can be used to suppress the automatic
+delivery confirmation stage on a per-message basis. See above for a 
+complete description.
 
 =back
 
@@ -298,6 +324,29 @@ sub send_sms
 		$self->{_new_credits_balance} = $num_credits;
 		$self->{_msg_delivery_id}     = $unique_id;
 		$self->{_sent_at}             = time();
+
+		# check delivery status, unless disabled
+		my $check_delivery_status = 1; # default true
+
+		if    (defined($opts{_wait})    and ! $opts{_wait})   { undef $check_delivery_status }
+		elsif (defined($self->{_wait})  and ! $self->{_wait}) { undef $check_delivery_status }
+
+		if ($check_delivery_status)
+		{
+		  wait_for_success: 
+		    for (1..10)
+		    {
+			my $reply = $self->delivery_status;
+			
+			if ($reply and substr($reply,0,1) ne 'N')
+			{
+			    $self->{_delivered_at} = time();
+			    last wait_for_success;
+			}
+			sleep 1 if $_ < 10; # wait and try again
+		    }
+		}
+		
 		return $unique_id;
 	    }
 	    else # request went through but message not accepted

@@ -1,5 +1,15 @@
 Revision history for SMS-Send-UK-Kapow
 
+0.06    2 February 2009
+        The send_sms method, if using http/s to interact with Kapow, now waits up to 10
+          seconds per message while attempting to confirm that the message was actually
+          delivered to the user. This is in accordance with the SMS::Send specification. 
+          You can override this behaviour by supplying a false value to the new '_wait'
+          parameter to either new() or send_sms(). Whether or not you use _wait, you can
+          'manually' check the delivery status of any message sent using http/s by 
+          calling the delivery_status method.
+        Added missing dependency on SMS::Send::Driver.
+
 0.05    29 January 2009 
         Default HTTP method changed from get to post.
         Changes to number processing to avoid duplication of work already done by Send::SMS.
